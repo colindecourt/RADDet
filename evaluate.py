@@ -84,7 +84,7 @@ def main():
         raise ValueError("RAD Boxes model not loaded, please check the ckpt path.")
 
     ### NOTE: Cartesian Boxes ckpt ###
-    if_evaluate_cart = True
+    if_evaluate_cart = False
     logdir_cart = os.path.join(config_evaluate["log_dir"], "cartesian_" + \
                         "b_" + str(config_train["batch_size"]) + \
                         "lr_" + str(config_train["learningrate_init"]))
@@ -157,7 +157,52 @@ def main():
                         data_generator.batch_size*data_generator.total_test_batches
         return mean_ap_test_all, ap_all_class_test_all
 
-
+    def test_step_rd(map_iou_threshold_list):
+        mean_ap_test_all = [] 
+        ap_all_class_test_all = []
+        ap_all_class_all = []
+        for i in range(len(map_iou_threshold_list)):
+            mean_ap_test_all.append(0.0)
+            ap_all_class_test_all.append([])
+            ap_all_class = []
+            for class_id in range(num_classes):
+                ap_all_class.append([])
+            ap_all_class_all.append(ap_all_class)
+        print("Start evaluating RAD Boxes on the entire dataset, it might take a while...")
+        pbar = tqdm(total=int(data_generator.total_test_batches))
+        for data, label, raw_boxes in test_generator.repeat().\
+            batch(data_generator.batch_size).take(data_generator.total_test_batches):
+            feature = model(data)
+            pred_raw, pred = model.decodeYolo(feature)
+            for batch_id in range(raw_boxes.shape[0]):
+                raw_boxes_frame = raw_boxes[batch_id]
+                pred_frame = pred[batch_id]
+                predicitons = helper.yoloheadToPredictions(pred_frame, \
+                                    conf_threshold=config_evaluate["confidence_threshold"])
+                nms_pred = helper.nms(predicitons, \
+                                    config_evaluate["nms_iou3d_threshold"], \
+                                    config_model["input_shape"], sigma=0.3, method="nms")
+                for j in range(len(map_iou_threshold_list)):
+                    map_iou_threshold = map_iou_threshold_list[j]
+                    mean_ap, ap_all_class_all[j] = mAP.mAP(nms_pred, \
+                                                    raw_boxes_frame.numpy(), \
+                                                    config_model["input_shape"], \
+                                                    ap_all_class_all[j], \
+                                                    tp_iou_threshold=map_iou_threshold, mode="RD")
+                    mean_ap_test_all[j] += mean_ap
+            pbar.update(1)
+        for iou_threshold_i in range(len(map_iou_threshold_list)):
+            ap_all_class = ap_all_class_all[iou_threshold_i]
+            for ap_class_i in ap_all_class:
+                if len(ap_class_i) == 0:
+                    class_ap = 0.
+                else:
+                    class_ap = np.mean(ap_class_i)
+                ap_all_class_test_all[iou_threshold_i].append(class_ap)
+            mean_ap_test_all[iou_threshold_i] /= \
+                        data_generator.batch_size*data_generator.total_test_batches
+        return mean_ap_test_all, ap_all_class_test_all
+    
     ### NOTE: define testing step for Cartesian Boxes Model ###
     # @tf.function
     def test_step_cart(map_iou_threshold_list):
@@ -207,6 +252,8 @@ def main():
             mean_ap_test_all[iou_threshold_i] /= \
                         data_generator.batch_size*data_generator.total_test_batches
         return mean_ap_test_all, ap_all_class_test_all
+    
+    
 
 
     def loadDataForPlot(sequences):
@@ -302,9 +349,41 @@ def main():
             pbar.update(1)
 
 
+    ### NOTE: evaluate RAD Boxes under different mAP_iou on RD spectrums only ###
+    # all_mean_aps, all_ap_classes = test_step_rd(config_evaluate["mAP_iou3d_threshold"])
+    # all_mean_aps = np.array(all_mean_aps)
+    # all_ap_classes = np.array(all_ap_classes)
+
+    # table = []
+    # row = []
+    # for i in range(len(all_mean_aps)):
+    #     if i == 0:
+    #         row.append("mAP")
+    #     row.append(all_mean_aps[i])
+    # table.append(row)
+    # row = []
+    # for j in range(all_ap_classes.shape[1]):
+    #     ap_current_class = all_ap_classes[:, j]
+    #     for k in range(len(ap_current_class)):
+    #         if k == 0:
+    #             row.append("AP_" + config_data["all_classes"][j])
+    #         row.append(ap_current_class[k])
+    #     table.append(row)
+    #     row = []
+    # headers = []
+    # for ap_iou_i in config_evaluate["mAP_iou3d_threshold"]:
+    #     if ap_iou_i == 0:
+    #         headers.append("AP name")
+    #     headers.append("AP_%.2f"%(ap_iou_i))
+    # print("==================== RAD Boxes AP RD ========================")
+    # print(tabulate(table, headers=headers))
+    # print("==========================================================")
+
+
 
     ### NOTE: evaluate RAD Boxes under different mAP_iou ###
     all_mean_aps, all_ap_classes = test_step(config_evaluate["mAP_iou3d_threshold"])
+    print(all_mean_aps, all_ap_classes)
     all_mean_aps = np.array(all_mean_aps)
     all_ap_classes = np.array(all_ap_classes)
 

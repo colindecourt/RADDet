@@ -8,7 +8,7 @@ import util.helper as helper
 
 def getTruePositive(pred, gt, input_size, iou_threshold=0.5, mode="3D"):
     """ output tp (true positive) with size [num_pred, ] """
-    assert mode in ["3D", "2D"]
+    assert mode in ["3D", "2D", "RD"]
     tp = np.zeros(len(pred))
     detected_gt_boxes = []
     for i in range(len(pred)):
@@ -19,6 +19,13 @@ def getTruePositive(pred, gt, input_size, iou_threshold=0.5, mode="3D"):
             current_pred_class = current_pred[7]
             gt_box = gt[..., :6]
             gt_class = gt[..., 6]
+        elif mode == "RD":
+            current_pred_box = np.array([current_pred[0], current_pred[2], current_pred[3], current_pred[5]])
+            current_pred_score = current_pred[6]
+            current_pred_class = current_pred[7]
+            gt_box = np.array([gt[..., 0], gt[..., 2], gt[..., 3], gt[..., 5]]).T
+            gt_class = gt[..., 6]
+            
         else:
             current_pred_box = current_pred[:4]
             current_pred_score = current_pred[4]

@@ -1,8 +1,7 @@
 # Title: RADDet
 # Authors: Ao Zhang, Erlik Nowruzi, Robert Laganiere
 import os
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
 
 import shutil
 import cv2
@@ -66,13 +65,13 @@ def main():
     manager = tf.train.CheckpointManager(ckpt, log_specific_dir, max_to_keep=3)
 
     ### NOTE: restore from last checkpoint ###
-    ckpt.restore(manager.latest_checkpoint)
-    if manager.latest_checkpoint:
-        print("Restored from {}".format(manager.latest_checkpoint))
-        global_steps.assign(ckpt.step.numpy())
+    # ckpt.restore(manager.latest_checkpoint)
+    # if manager.latest_checkpoint:
+    #     print("Restored from {}".format(manager.latest_checkpoint))
+    #     global_steps.assign(ckpt.step.numpy())
 
     ### NOTE: define training step ###
-    @tf.function
+    # @tf.function
     def train_step(data, label):
         """ define train step for training """
         with tf.GradientTape() as tape:
