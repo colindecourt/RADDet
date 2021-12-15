@@ -1,4 +1,4 @@
-evaluate.py# Title: RADDet
+# Title: RADDet
 # Authors: Ao Zhang, Erlik Nowruzi, Robert Laganiere
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
@@ -18,7 +18,7 @@ from tabulate import tabulate
 
 import model.model as M
 import model.model_cart as MCart
-from dataset.batch_data_generator import DataGenerator
+from dataset.carrada_batch_data_generator import DataGenerator
 import metrics.mAP as mAP
 
 import util.loader as loader
@@ -34,7 +34,7 @@ def main():
         logical_gpus = tf.config.experimental.list_logical_devices('GPU')
         print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
 
-    config = loader.readConfig()
+    config = loader.readConfig('./config_carrada.json')
     config_data = config["DATA"]
     config_radar = config["RADAR_CONFIGURATION"]
     config_model = config["MODEL"]
@@ -63,8 +63,7 @@ def main():
                     anchors_cart=anchor_cart, cart_shape=model_cart.features_shape)
     train_generator = data_generator.trainGenerator()
     test_generator = data_generator.testGenerator()
-    train_cart_generator = data_generator.trainCartGenerator()
-    test_cart_generator = data_generator.testCartGenerator()
+
 
     ### NOTE: RAD Boxes ckpt ###
     logdir = os.path.join(config_evaluate["log_dir"], \
@@ -82,31 +81,6 @@ def main():
         print("Restored RAD Boxes Model from {}".format(manager.latest_checkpoint))
     else:
         raise ValueError("RAD Boxes model not loaded, please check the ckpt path.")
-
-    ### NOTE: Cartesian Boxes ckpt ###
-    if_evaluate_cart = False
-    logdir_cart = os.path.join(config_evaluate["log_dir"], "cartesian_" + \
-                        "b_" + str(config_train["batch_size"]) + \
-                        "lr_" + str(config_train["learningrate_init"]))
-                        # "lr_" + str(config_train["learningrate_init"]) + \
-                        # "_" + str(config_train["log_cart_add"]))
-    if not os.path.exists(logdir_cart):
-        if_evaluate_cart = False
-        print("*************************************************************")
-        print("Cartesian ckpt not found, skipping evaluating Cartesian Boxes")
-        print("*************************************************************")
-    if if_evaluate_cart:
-        global_steps_cart = tf.Variable(1, trainable=False, dtype=tf.int64)
-        optimizer_cart = K.optimizers.Adam(learning_rate=config_train["learningrate_init"])
-        ckpt_cart = tf.train.Checkpoint(optimizer=optimizer_cart, model=model_cart, \
-                                        step=global_steps_cart)
-        manager_cart = tf.train.CheckpointManager(ckpt_cart, \
-                    os.path.join(logdir_cart, "ckpt"), max_to_keep=3)
-        ckpt_cart.restore(manager_cart.latest_checkpoint)
-        if manager.latest_checkpoint:
-            print("Restored Cartesian Boxes Model from {}".format\
-                                            (manager_cart.latest_checkpoint))
-
 
 
     ### NOTE: define testing step for RAD Boxes Model ###
@@ -202,59 +176,6 @@ def main():
             mean_ap_test_all[iou_threshold_i] /= \
                         data_generator.batch_size*data_generator.total_test_batches
         return mean_ap_test_all, ap_all_class_test_all
-    
-    ### NOTE: define testing step for Cartesian Boxes Model ###
-    # @tf.function
-    def test_step_cart(map_iou_threshold_list):
-        mean_ap_test_all = [] 
-        ap_all_class_test_all = []
-        ap_all_class_all = []
-        for i in range(len(map_iou_threshold_list)):
-            mean_ap_test_all.append(0.0)
-            ap_all_class_test_all.append([])
-            ap_all_class = []
-            for class_id in range(num_classes):
-                ap_all_class.append([])
-            ap_all_class_all.append(ap_all_class)
-        print("Start evaluating Cartesian Boxes on the entire dataset, \
-                                                it might take a while...")
-        pbar = tqdm(total=int(data_generator.total_test_batches))
-        for data, label, raw_boxes in test_cart_generator.repeat().\
-            batch(data_generator.batch_size).take(data_generator.total_test_batches):
-            backbone_fmp = model.backbone_stage(data)
-            pred_raw = model_cart(backbone_fmp)
-            pred = model_cart.decodeYolo(pred_raw)
-            for batch_id in range(raw_boxes.shape[0]):
-                raw_boxes_frame = raw_boxes[batch_id]
-                pred_frame = pred[batch_id]
-                predicitons = helper.yoloheadToPredictions2D(pred_frame, \
-                                                            conf_threshold=0.5)
-                nms_pred = helper.nms2D(predicitons, \
-                                    config_evaluate["nms_iou3d_threshold"], \
-                                    config_model["input_shape"], sigma=0.3, method="nms")
-                for j in range(len(map_iou_threshold_list)):
-                    map_iou_threshold = map_iou_threshold_list[j]
-                    mean_ap, ap_all_class_all[j] = mAP.mAP2D(nms_pred, \
-                                                    raw_boxes_frame.numpy(), \
-                                                    config_model["input_shape"], \
-                                                    ap_all_class_all[j], \
-                                                    tp_iou_threshold=map_iou_threshold)
-                    mean_ap_test_all[j] += mean_ap
-            pbar.update(1)
-        for iou_threshold_i in range(len(map_iou_threshold_list)):
-            ap_all_class = ap_all_class_all[iou_threshold_i]
-            for ap_class_i in ap_all_class:
-                if len(ap_class_i) == 0:
-                    class_ap = 0.
-                else:
-                    class_ap = np.mean(ap_class_i)
-                ap_all_class_test_all[iou_threshold_i].append(class_ap)
-            mean_ap_test_all[iou_threshold_i] /= \
-                        data_generator.batch_size*data_generator.total_test_batches
-        return mean_ap_test_all, ap_all_class_test_all
-    
-    
-
 
     def loadDataForPlot(sequences):
         """ Load data one by one for generating evaluation images """
@@ -325,7 +246,7 @@ def main():
                                     config_evaluate["nms_iou3d_threshold"], \
                                     config_model["input_shape"], \
                                     sigma=0.3, method="nms")
-            
+
             if if_evaluate_cart:
                 backbone_fmp = model.backbone_stage(data)
                 pred_raw_cart = model_cart(backbone_fmp)
@@ -350,34 +271,34 @@ def main():
 
 
     ### NOTE: evaluate RAD Boxes under different mAP_iou on RD spectrums only ###
-    # all_mean_aps, all_ap_classes = test_step_rd(config_evaluate["mAP_iou3d_threshold"])
-    # all_mean_aps = np.array(all_mean_aps)
-    # all_ap_classes = np.array(all_ap_classes)
+    all_mean_aps, all_ap_classes = test_step_rd(config_evaluate["mAP_iou3d_threshold"])
+    all_mean_aps = np.array(all_mean_aps)
+    all_ap_classes = np.array(all_ap_classes)
 
-    # table = []
-    # row = []
-    # for i in range(len(all_mean_aps)):
-    #     if i == 0:
-    #         row.append("mAP")
-    #     row.append(all_mean_aps[i])
-    # table.append(row)
-    # row = []
-    # for j in range(all_ap_classes.shape[1]):
-    #     ap_current_class = all_ap_classes[:, j]
-    #     for k in range(len(ap_current_class)):
-    #         if k == 0:
-    #             row.append("AP_" + config_data["all_classes"][j])
-    #         row.append(ap_current_class[k])
-    #     table.append(row)
-    #     row = []
-    # headers = []
-    # for ap_iou_i in config_evaluate["mAP_iou3d_threshold"]:
-    #     if ap_iou_i == 0:
-    #         headers.append("AP name")
-    #     headers.append("AP_%.2f"%(ap_iou_i))
-    # print("==================== RAD Boxes AP RD ========================")
-    # print(tabulate(table, headers=headers))
-    # print("==========================================================")
+    table = []
+    row = []
+    for i in range(len(all_mean_aps)):
+        if i == 0:
+            row.append("mAP")
+        row.append(all_mean_aps[i])
+    table.append(row)
+    row = []
+    for j in range(all_ap_classes.shape[1]):
+        ap_current_class = all_ap_classes[:, j]
+        for k in range(len(ap_current_class)):
+            if k == 0:
+                row.append("AP_" + config_data["all_classes"][j])
+            row.append(ap_current_class[k])
+        table.append(row)
+        row = []
+    headers = []
+    for ap_iou_i in config_evaluate["mAP_iou3d_threshold"]:
+        if ap_iou_i == 0:
+            headers.append("AP name")
+        headers.append("AP_%.2f"%(ap_iou_i))
+    print("==================== RAD Boxes AP RD ========================")
+    print(tabulate(table, headers=headers))
+    print("==========================================================")
 
 
 
@@ -411,39 +332,6 @@ def main():
     print("==================== RAD Boxes AP ========================")
     print(tabulate(table, headers=headers))
     print("==========================================================")
-
-
-    ### NOTE: evaluate Cart Boxes under different mAP_iou ###
-    if if_evaluate_cart:
-        all_mean_aps, all_ap_classes = test_step_cart(\
-                                config_evaluate["mAP_iou3d_threshold"])
-        all_mean_aps = np.array(all_mean_aps)
-        all_ap_classes = np.array(all_ap_classes)
-
-        table = []
-        row = []
-        for i in range(len(all_mean_aps)):
-            if i == 0:
-                row.append("mAP")
-            row.append(all_mean_aps[i])
-        table.append(row)
-        row = []
-        for j in range(all_ap_classes.shape[1]):
-            ap_current_class = all_ap_classes[:, j]
-            for k in range(len(ap_current_class)):
-                if k == 0:
-                    row.append("AP_" + config_data["all_classes"][j])
-                row.append(ap_current_class[k])
-            table.append(row)
-            row = []
-        headers = []
-        for ap_iou_i in config_evaluate["mAP_iou3d_threshold"]:
-            if ap_iou_i == 0:
-                headers.append("AP name")
-            headers.append("AP_%.2f"%(ap_iou_i))
-        print("================= Cartesian Boxes AP =====================")
-        print(tabulate(table, headers=headers))
-        print("==========================================================")
 
 
     ### NOTE: plot the predictions on the entire dataset ###

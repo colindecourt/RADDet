@@ -149,6 +149,7 @@ class DataGenerator:
             gt_filename = loader.gtfileFromRADfile(RAD_filename, \
                                         self.config_data["train_set_dir"])
             gt_instances = loader.readRadarInstances(gt_filename)
+            print(gt_instances)
             if gt_instances is None:
                 raise ValueError("gt file not found, please double check the path")
 

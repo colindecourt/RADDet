@@ -1,14 +1,13 @@
-
 {
 		"DATA" :
 		{
-				"train_set_dir": "/opt/dataset_ssd/radar1/RADDet dataset/train/",
-				"test_set_dir": "/opt/dataset_ssd/radar1/RADDet dataset/test/",
-				"all_classes" : ["person", "bicycle", "car", "motorcycle", "bus", "truck" ],
-				"global_mean_log" : 3.2438383,
+				"train_set_dir": "/opt/dataset_ssd/radar1/Carrada/",
+				"test_set_dir": "/opt/dataset_ssd/radar1/Carrada/",
+				"all_classes" : ["person", "bicycle", "car"],
+				"global_mean_log" : 3.22145193470352,
 				"global_max_log" : 10.0805629,
 				"global_min_log" : 0.0,
-				"global_variance_log" : 6.8367246,
+				"global_variance_log" : 6.416610950862715,
 				"max_boxes_per_frame" : 30,
 				"trainset_portion" : 0.8
 		},
@@ -28,7 +27,7 @@
 				"epochs" : 1000,
 				"batch_size" : 3,
 				"focal_loss_iou_threshold" : 0.3,
-				"log_dir": "./RadarResNet",
+				"log_dir": "./logs/CarRadarResNet",
 				"learningrate_init": 0.0001,
 				"learningrate_end": 0.00001,
 				"learningrate_decay": 0.96,
@@ -42,7 +41,7 @@
 
 		"EVALUATE" :
 		{
-				"log_dir": "./RadarResNet",
+				"log_dir": "./logs/CarRadarResNet",
 				"confidence_threshold" : 0.5,
 				"nms_iou3d_threshold": 0.1,
 				"mAP_iou3d_threshold": [0.1, 0.3, 0.5, 0.7]
